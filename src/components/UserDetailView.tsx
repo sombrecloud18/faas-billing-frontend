@@ -1,8 +1,8 @@
-// src/pages/ClientPage.tsx
+// src/components/UserDetailView.tsx
 import { useMemo, useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { KpiCard } from '../components/KpiCard';
+import { KpiCard } from './KpiCard';
 
 type HourPoint = {
   ts: string;
@@ -13,6 +13,7 @@ type HourPoint = {
   ramMbSec: number;
   cost: number;
 };
+
 type FnRow = {
   name: string;
   plan: string;
@@ -34,6 +35,7 @@ const METRICS = [
   { key: 'durationP95ms', title: 'Длительность p95 (мс)' },
   { key: 'coldStarts', title: 'Холодные старты' },
 ] as const;
+
 type MetricKey = typeof METRICS[number]['key'];
 
 const PERIODS = [
@@ -41,12 +43,19 @@ const PERIODS = [
   { key: '1h', label: 'за последний час' },
   { key: '24h', label: 'за последние сутки' },
 ] as const;
+
 type PeriodKey = typeof PERIODS[number]['key'];
 
-export function ClientPage() {
+interface UserDetailViewProps {
+  userId: string;
+  userEmail: string;
+  onBack: () => void;
+}
+
+export function UserDetailView({ userId, userEmail, onBack }: UserDetailViewProps) {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['clientUsageV2'],
-    queryFn: () => api.clientUsage(),
+    queryKey: ['userUsage', userId],
+    queryFn: () => api.getUserUsage(userId),
   });
 
   const hourly: HourPoint[] = data?.hourly ?? [];
@@ -54,24 +63,6 @@ export function ClientPage() {
 
   const [activeMetric, setActiveMetric] = useState<MetricKey>('invocations');
   const [period, setPeriod] = useState<PeriodKey>('24h');
-  const [isDetailizationModalOpen, setIsDetailizationModalOpen] = useState(false);
-  const [detailizationStartDate, setDetailizationStartDate] = useState('');
-  const [detailizationEndDate, setDetailizationEndDate] = useState('');
-  const [detailizationSuccess, setDetailizationSuccess] = useState<string | null>(null);
-
-  const detailizationMutation = useMutation({
-    mutationFn: ({ startDate, endDate }: { startDate: string; endDate: string }) =>
-      api.requestDetailization(startDate, endDate),
-    onSuccess: (result) => {
-      setDetailizationSuccess(result.message);
-      setIsDetailizationModalOpen(false);
-      // Скрываем сообщение через 3 секунды
-      setTimeout(() => setDetailizationSuccess(null), 3000);
-    },
-    onError: (error) => {
-      console.error('Ошибка при запросе детализации:', error);
-    },
-  });
 
   const averages = useMemo(() => ({
     ramMbSec: data?.summary?.avgRamMbSec ?? 0,
@@ -105,7 +96,21 @@ export function ClientPage() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>Клиент</h2>
+        <button 
+          onClick={onBack}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: 'transparent',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.3)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 14
+          }}
+        >
+          ← Назад
+        </button>
+        <h2 style={{ margin: 0 }}>Пользователь: {userEmail}</h2>
         <button onClick={() => refetch()}>Обновить</button>
       </div>
 
@@ -115,30 +120,30 @@ export function ClientPage() {
       {!isLoading && !error && data && (
         <>
           {/* KPI: среднесуточные */}
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-  {METRICS.map(m => (
-    <button
-      key={m.key}
-      onClick={() => setActiveMetric(m.key)}
-      style={{
-        textAlign: 'left',
-        background: 'transparent',
-        border: activeMetric === m.key ? '2px solid #6ea8fe' : '1px solid rgba(255,255,255,0.15)',
-        borderRadius: 10,
-        padding: 0,
-        cursor: 'pointer'
-      }}
-    >
-      <div style={{ padding: 12 }}>
-        <KpiCard
-          title={`${m.title} — среднесуточно`}
-          value={formatMetric(m.key, averages[m.key as MetricKey])}
-          hint="За последние 24 часа"
-        />
-      </div>
-    </button>
-  ))}
-</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            {METRICS.map(m => (
+              <button
+                key={m.key}
+                onClick={() => setActiveMetric(m.key)}
+                style={{
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: activeMetric === m.key ? '2px solid #6ea8fe' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 10,
+                  padding: 0,
+                  cursor: 'pointer'
+                }}
+              >
+                <div style={{ padding: 12 }}>
+                  <KpiCard
+                    title={`${m.title} — среднесуточно`}
+                    value={formatMetric(m.key, averages[m.key as MetricKey])}
+                    hint="За последние 24 часа"
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
           
           {/* График выбранной метрики по часам */}
           <div style={{ padding: 16, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}>
@@ -150,6 +155,7 @@ export function ClientPage() {
               {hourly.map(p => <span key={p.ts}>{p.ts}</span>)}
             </div>
           </div>
+
           {/* Детализация долга */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <KpiCard 
@@ -169,38 +175,6 @@ export function ClientPage() {
             />
           </div>
 
-          {/* Кнопка детализации */}
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
-            <button 
-              onClick={() => setIsDetailizationModalOpen(true)}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: '#6ea8fe',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontSize: 14,
-                fontWeight: '500'
-              }}
-            >
-              Заказать детализацию
-            </button>
-          </div>
-
-          {/* Сообщение об успешной отправке */}
-          {detailizationSuccess && (
-            <div style={{
-              padding: '12px 16px',
-              backgroundColor: '#d4edda',
-              color: '#155724',
-              border: '1px solid #c3e6cb',
-              borderRadius: 8,
-              marginTop: 12
-            }}>
-              {detailizationSuccess}
-            </div>
-          )}
           {/* Переключатель периода и таблица функций */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
             <div style={{ opacity: 0.8 }}>Период для таблицы:</div>
@@ -245,113 +219,6 @@ export function ClientPage() {
             </table>
           </div>
         </>
-      )}
-
-      {/* Модальное окно для детализации */}
-      {isDetailizationModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: '#1a1a1a',
-            padding: 24,
-            borderRadius: 12,
-            border: '1px solid rgba(255,255,255,0.1)',
-            minWidth: 400,
-            maxWidth: 500
-          }}>
-            <h3 style={{ margin: '0 0 20px 0', color: 'white' }}>Заказ детализации</h3>
-            
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 8, color: 'white', fontSize: 14 }}>
-                Дата начала:
-              </label>
-              <input
-                type="date"
-                value={detailizationStartDate}
-                onChange={(e) => setDetailizationStartDate(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  color: 'white',
-                  fontSize: 14
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', marginBottom: 8, color: 'white', fontSize: 14 }}>
-                Дата окончания:
-              </label>
-              <input
-                type="date"
-                value={detailizationEndDate}
-                onChange={(e) => setDetailizationEndDate(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  color: 'white',
-                  fontSize: 14
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setIsDetailizationModalOpen(false)}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: 'transparent',
-                  color: 'white',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 14
-                }}
-              >
-                Отмена
-              </button>
-              <button
-                onClick={() => {
-                  if (detailizationStartDate && detailizationEndDate) {
-                    detailizationMutation.mutate({
-                      startDate: detailizationStartDate,
-                      endDate: detailizationEndDate
-                    });
-                  }
-                }}
-                disabled={!detailizationStartDate || !detailizationEndDate || detailizationMutation.isPending}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: detailizationStartDate && detailizationEndDate ? '#6ea8fe' : 'rgba(110, 168, 254, 0.3)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: detailizationStartDate && detailizationEndDate ? 'pointer' : 'not-allowed',
-                  fontSize: 14,
-                  fontWeight: '500'
-                }}
-              >
-                {detailizationMutation.isPending ? 'Отправка...' : 'Отправить запрос на детализацию'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
