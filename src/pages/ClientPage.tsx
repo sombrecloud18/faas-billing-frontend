@@ -49,8 +49,14 @@ export function ClientPage() {
     queryFn: () => api.clientUsage(),
   });
 
+  const { data: tariffData } = useQuery({
+    queryKey: ['clientTariff'],
+    queryFn: () => api.getCurrentTariff(),
+  });
+
   const hourly: HourPoint[] = data?.hourly ?? [];
   const byFunction: FnRow[] = data?.byFunction ?? [];
+  const currentTariff = tariffData?.tariff;
 
   const [activeMetric, setActiveMetric] = useState<MetricKey>('invocations');
   const [period, setPeriod] = useState<PeriodKey>('24h');
@@ -58,6 +64,11 @@ export function ClientPage() {
   const [detailizationStartDate, setDetailizationStartDate] = useState('');
   const [detailizationEndDate, setDetailizationEndDate] = useState('');
   const [detailizationSuccess, setDetailizationSuccess] = useState<string | null>(null);
+
+  // Состояния для заявки на изменение тарифа
+  const [isTariffModalOpen, setIsTariffModalOpen] = useState(false);
+  const [tariffDescription, setTariffDescription] = useState('');
+  const [tariffSuccess, setTariffSuccess] = useState<string | null>(null);
 
   const detailizationMutation = useMutation({
     mutationFn: ({ startDate, endDate }: { startDate: string; endDate: string }) =>
@@ -70,6 +81,20 @@ export function ClientPage() {
     },
     onError: (error) => {
       console.error('Ошибка при запросе детализации:', error);
+    },
+  });
+
+  const tariffMutation = useMutation({
+    mutationFn: (description: string) => api.requestTariffChange(description),
+    onSuccess: (result) => {
+      setTariffSuccess(result.message);
+      setIsTariffModalOpen(false);
+      setTariffDescription('');
+      // Скрываем сообщение через 3 секунды
+      setTimeout(() => setTariffSuccess(null), 3000);
+    },
+    onError: (error) => {
+      console.error('Ошибка при запросе изменения тарифа:', error);
     },
   });
 
@@ -111,6 +136,64 @@ export function ClientPage() {
 
       {isLoading && <div>Загрузка…</div>}
       {error && <div style={{ color: 'crimson' }}>Ошибка загрузки</div>}
+
+      {/* Текущий тариф */}
+      {currentTariff && (
+        <div style={{ padding: 16, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0 }}>Текущий тариф: {currentTariff.name}</h3>
+            <button 
+              onClick={() => setIsTariffModalOpen(true)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: 14
+              }}
+            >
+              Запросить изменение тарифа
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Вызовы</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.invocationsPrice.toFixed(4)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Длительность (мс)</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.durationPrice.toFixed(6)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>CPU (ядро·мс)</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.cpuPrice.toFixed(7)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>RAM (MB·сек)</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.ramPrice.toFixed(7)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Холодные старты</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.coldStartPrice.toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Сообщение об успешной отправке заявки на тариф */}
+      {tariffSuccess && (
+        <div style={{
+          padding: '12px 16px',
+          backgroundColor: '#d4edda',
+          color: '#155724',
+          border: '1px solid #c3e6cb',
+          borderRadius: 8
+        }}>
+          {tariffSuccess}
+        </div>
+      )}
 
       {!isLoading && !error && data && (
         <>
@@ -348,6 +431,92 @@ export function ClientPage() {
                 }}
               >
                 {detailizationMutation.isPending ? 'Отправка...' : 'Отправить запрос на детализацию'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно для заявки на изменение тарифа */}
+      {isTariffModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            padding: 24,
+            borderRadius: 12,
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: 500,
+            maxWidth: 600
+          }}>
+            <h3 style={{ margin: '0 0 20px 0', color: 'white' }}>Заявка на изменение тарифа</h3>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 8, color: 'white', fontSize: 14 }}>
+                Опишите, какие изменения в тарифе вам нужны:
+              </label>
+              <textarea
+                value={tariffDescription}
+                onChange={(e) => setTariffDescription(e.target.value)}
+                placeholder="Например: нужно снизить стоимость RAM для наших функций, так как мы используем много памяти..."
+                style={{
+                  width: '100%',
+                  minHeight: '120px',
+                  padding: '12px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  color: 'white',
+                  fontSize: 14,
+                  resize: 'vertical'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setIsTariffModalOpen(false)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: 'transparent',
+                  color: 'white',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: 14
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => {
+                  if (tariffDescription.trim()) {
+                    tariffMutation.mutate(tariffDescription.trim());
+                  }
+                }}
+                disabled={!tariffDescription.trim() || tariffMutation.isPending}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: tariffDescription.trim() ? '#28a745' : 'rgba(40, 167, 69, 0.3)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: tariffDescription.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: 14,
+                  fontWeight: '500'
+                }}
+              >
+                {tariffMutation.isPending ? 'Отправка...' : 'Отправить заявку'}
               </button>
             </div>
           </div>

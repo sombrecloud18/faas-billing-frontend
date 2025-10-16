@@ -58,8 +58,14 @@ export function UserDetailView({ userId, userEmail, onBack }: UserDetailViewProp
     queryFn: () => api.getUserUsage(userId),
   });
 
+  const { data: tariffData, refetch: refetchTariff } = useQuery({
+    queryKey: ['userTariff', userId],
+    queryFn: () => api.getUserTariff(userId),
+  });
+
   const hourly: HourPoint[] = data?.hourly ?? [];
   const byFunction: FnRow[] = data?.byFunction ?? [];
+  const currentTariff = tariffData?.tariff;
 
   const [activeMetric, setActiveMetric] = useState<MetricKey>('invocations');
   const [period, setPeriod] = useState<PeriodKey>('24h');
@@ -112,10 +118,40 @@ export function UserDetailView({ userId, userEmail, onBack }: UserDetailViewProp
         </button>
         <h2 style={{ margin: 0 }}>Пользователь: {userEmail}</h2>
         <button onClick={() => refetch()}>Обновить</button>
+        <button onClick={() => refetchTariff()}>Обновить тариф</button>
       </div>
 
       {isLoading && <div>Загрузка…</div>}
       {error && <div style={{ color: 'crimson' }}>Ошибка загрузки</div>}
+
+      {/* Тариф пользователя */}
+      {currentTariff && (
+        <div style={{ padding: 16, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}>
+          <h3 style={{ margin: '0 0 12px 0' }}>Тариф пользователя: {currentTariff.name}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Вызовы</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.invocationsPrice.toFixed(4)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Длительность (мс)</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.durationPrice.toFixed(6)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>CPU (ядро·мс)</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.cpuPrice.toFixed(7)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>RAM (MB·сек)</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.ramPrice.toFixed(7)}</div>
+            </div>
+            <div style={{ padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Холодные старты</div>
+              <div style={{ fontSize: 16, fontWeight: '500' }}>₽ {currentTariff.coldStartPrice.toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!isLoading && !error && data && (
         <>

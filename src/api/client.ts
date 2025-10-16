@@ -239,6 +239,61 @@ async clientUsage(): Promise<any> {
     return data;
   },
 
+  async getUserTariff(userId: string): Promise<{ 
+    tariff: { 
+      id: string; 
+      name: string; 
+      invocationsPrice: number; 
+      durationPrice: number; 
+      cpuPrice: number; 
+      ramPrice: number; 
+      coldStartPrice: number; 
+      isDefault: boolean; 
+    } 
+  }> {
+    if (DEMO) {
+      // Разные тарифы для разных пользователей
+      const tariffs = [
+        {
+          id: 'default',
+          name: 'Стандартный тариф',
+          invocationsPrice: 0.01,
+          durationPrice: 0.00001,
+          cpuPrice: 0.000001,
+          ramPrice: 0.000001,
+          coldStartPrice: 0.1,
+          isDefault: true
+        },
+        {
+          id: 'premium',
+          name: 'Премиум тариф',
+          invocationsPrice: 0.008,
+          durationPrice: 0.000008,
+          cpuPrice: 0.0000008,
+          ramPrice: 0.0000005,
+          coldStartPrice: 0.08,
+          isDefault: false
+        },
+        {
+          id: 'basic',
+          name: 'Базовый тариф',
+          invocationsPrice: 0.012,
+          durationPrice: 0.000012,
+          cpuPrice: 0.0000012,
+          ramPrice: 0.0000015,
+          coldStartPrice: 0.12,
+          isDefault: false
+        }
+      ];
+      
+      // Выбираем тариф в зависимости от userId
+      const tariffIndex = parseInt(userId) % tariffs.length;
+      return { tariff: tariffs[tariffIndex] };
+    }
+    const { data } = await http.get(`/admin/users/${userId}/tariff`);
+    return data;
+  },
+
   async getDetailizationRequests(): Promise<{ requests: Array<{ id: string; userId: string; userEmail: string; startDate: string; endDate: string; status: 'pending' | 'processing' | 'completed'; createdAt: string }> }> {
     if (DEMO) {
       return {
@@ -274,6 +329,141 @@ async clientUsage(): Promise<any> {
       };
     }
     const { data } = await http.get('/admin/detailization-requests');
+    return data;
+  },
+
+  // API методы для тарифов
+  async getCurrentTariff(): Promise<{ 
+    tariff: { 
+      id: string; 
+      name: string; 
+      invocationsPrice: number; 
+      durationPrice: number; 
+      cpuPrice: number; 
+      ramPrice: number; 
+      coldStartPrice: number; 
+      isDefault: boolean; 
+    } 
+  }> {
+    if (DEMO) {
+      return {
+        tariff: {
+          id: 'default',
+          name: 'Стандартный тариф',
+          invocationsPrice: 0.01,
+          durationPrice: 0.00001,
+          cpuPrice: 0.000001,
+          ramPrice: 0.000001,
+          coldStartPrice: 0.1,
+          isDefault: true
+        }
+      };
+    }
+    const { data } = await http.get('/client/tariff');
+    return data;
+  },
+
+  async requestTariffChange(description: string): Promise<{ success: boolean; message: string }> {
+    if (DEMO) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { success: true, message: 'Заявка на изменение тарифа отправлена' };
+    }
+    const { data } = await http.post('/client/tariff-request', { description });
+    return data;
+  },
+
+  async getTariffRequests(): Promise<{ requests: Array<{ 
+    id: string; 
+    userId: string; 
+    userEmail: string; 
+    description: string; 
+    status: 'pending' | 'approved' | 'rejected'; 
+    createdAt: string;
+    adminResponse?: string;
+    proposedTariff?: {
+      invocationsPrice: number;
+      durationPrice: number;
+      cpuPrice: number;
+      ramPrice: number;
+      coldStartPrice: number;
+    };
+  }> }> {
+    if (DEMO) {
+      return {
+        requests: [
+          {
+            id: '1',
+            userId: '1',
+            userEmail: 'client1@example.com',
+            description: 'Нужно увеличить лимиты на CPU для обработки больших данных',
+            status: 'pending',
+            createdAt: '2024-01-15T10:30:00Z'
+          },
+          {
+            id: '2',
+            userId: '2',
+            userEmail: 'client2@example.com',
+            description: 'Требуется снижение стоимости RAM для наших функций',
+            status: 'approved',
+            createdAt: '2024-01-14T14:15:00Z',
+            adminResponse: 'Тариф одобрен. Новые цены будут применены с 1 февраля.',
+            proposedTariff: {
+              invocationsPrice: 0.008,
+              durationPrice: 0.000008,
+              cpuPrice: 0.0000008,
+              ramPrice: 0.0000005,
+              coldStartPrice: 0.08
+            }
+          },
+          {
+            id: '3',
+            userId: '3',
+            userEmail: 'client3@example.com',
+            description: 'Просим персональный тариф для корпоративного клиента',
+            status: 'rejected',
+            createdAt: '2024-01-13T09:45:00Z',
+            adminResponse: 'К сожалению, мы не можем предоставить персональный тариф. Рассмотрите наши стандартные предложения.'
+          }
+        ]
+      };
+    }
+    const { data } = await http.get('/admin/tariff-requests');
+    return data;
+  },
+
+  async approveTariffRequest(
+    requestId: string, 
+    proposedTariff: {
+      invocationsPrice: number;
+      durationPrice: number;
+      cpuPrice: number;
+      ramPrice: number;
+      coldStartPrice: number;
+    },
+    adminResponse: string
+  ): Promise<{ success: boolean; message: string }> {
+    if (DEMO) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { success: true, message: 'Тариф одобрен и отправлен клиенту' };
+    }
+    const { data } = await http.post(`/admin/tariff-requests/${requestId}/approve`, {
+      proposedTariff,
+      adminResponse
+    });
+    return data;
+  },
+
+  async rejectTariffRequest(
+    requestId: string, 
+    adminResponse: string
+  ): Promise<{ success: boolean; message: string }> {
+    if (DEMO) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { success: true, message: 'Заявка отклонена' };
+    }
+    const { data } = await http.post(`/admin/tariff-requests/${requestId}/reject`, {
+      adminResponse
+    });
     return data;
   }
 };
